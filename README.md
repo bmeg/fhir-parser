@@ -65,6 +65,12 @@ To get a sense of how to use _fhir-parser_, take a look at these libraries:
 - [**Swift-FHIR**][swift-fhir]
 - [**fhirclient**][client-py]
 
+Testing
+============
+```commandline
+export FHIR_UNITTEST_DATADIR=fhir-parser/downloads
+python3 -m unittest fhirclient/models/*_tests.py
+```
 
 Tech Details
 ============
