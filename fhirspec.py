@@ -89,6 +89,7 @@ class FHIRSpec(object):
     def found_codesystem(self, codesystem):
         if codesystem.url not in self.settings.enum_ignore:
             self.codesystems[codesystem.url] = codesystem
+            logger.info("Found CodeSystem {}".format(codesystem.url))
     
     def valueset_with_uri(self, uri):
         assert uri
@@ -370,7 +371,10 @@ class FHIRValueSet(object):
             if compose is None:
                 raise Exception(f"Currently only composed ValueSets are supported. {self.definition}")
             if 'exclude' in compose:
-                raise Exception("Not currently supporting 'exclude' on ValueSet")
+                # raise Exception("Not currently supporting 'exclude' on ValueSet")
+                logger.warn("Not currently supporting 'exclude' on ValueSet {}".format(self.url))
+                return None
+
             include = compose.get('include') or compose.get('import')   # "import" is for DSTU-2 compatibility
         
         if 1 != len(include):
@@ -393,7 +397,11 @@ class FHIRValueSet(object):
             for concept in concepts:
                 assert 'code' in concept
                 restricted_to.append(concept['code'])
-        
+
+        # are there codes in the code system? include them in restricted to
+        for code in cs.codes:
+            restricted_to.append(code)
+
         self._enum = FHIRValueSetEnum(name=cs.name, restricted_to=restricted_to, value_set=self)
         return self._enum
 
@@ -609,7 +617,7 @@ class FHIRStructureDefinition(object):
             # look at all properties' classes and assign their modules
             for prop in klass.properties:
                 prop_cls_name = prop.class_name
-                if prop.enum is not None:
+                if prop.enum is not None and self.spec.settings.tpl_codesystems_source:
                     enum_cls, did_create = fhirclass.FHIRClass.for_element(prop.enum)
                     enum_cls.module = prop.enum.name
                     prop.module_name = enum_cls.module
@@ -759,7 +767,7 @@ class FHIRStructureDefinitionElement(object):
         self.n_min = element_dict.get('min')
         self.n_max = element_dict.get('max')
         self.is_summary = element_dict.get('isSummary')
-    
+
     def resolve_dependencies(self):
         if self.is_main_profile_element:
             self.represents_class = True
@@ -949,6 +957,7 @@ class FHIRStructureDefinitionElementDefinition(object):
         self.element = element
         self.types = []
         self.name = None
+        self.binding = None
         self.prop_name = None
         self.content_reference = None
         self._content_referenced = None
@@ -971,7 +980,7 @@ class FHIRStructureDefinitionElementDefinition(object):
         self.types = []
         for type_dict in definition_dict.get('type', []):
             self.types.append(FHIRElementType(type_dict))
-        
+        self.binding = definition_dict.get('binding')
         self.name = definition_dict.get('name')
         self.content_reference = definition_dict.get('contentReference')
         self.dstu2_name_reference = definition_dict.get('nameReference')
@@ -1008,19 +1017,20 @@ class FHIRStructureDefinitionElementDefinition(object):
             self._content_referenced = elem.definition
         
         # resolve bindings
-        if self.binding is not None and self.binding.is_required and self.binding.has_valueset:
+        if self.binding is not None and self.binding.has_valueset:
             uri = self.binding.valueset_uri
             if 'http://hl7.org/fhir' != uri[:19]:
                 logger.debug("Ignoring foreign ValueSet \"{}\"".format(uri))
                 return
-	        # remove version from canonical URI, if present, e.g. "http://hl7.org/fhir/ValueSet/name-use|4.0.0"
+            # remove version from canonical URI, if present, e.g. "http://hl7.org/fhir/ValueSet/name-use|4.0.0"
             if '|' in uri:
                 uri = uri.split('|')[0]
 
             valueset = self.element.profile.spec.valueset_with_uri(uri)
             if valueset is None:
-                logger.error("There is no ValueSet for required binding \"{}\" on {} in {}"
-                    .format(uri, self.name or self.prop_name, self.element.profile.name))
+                logger.error("There is no ValueSet for binding \"{}\" on {} in {} binding.is_required {}"
+                             .format(uri, self.name or self.prop_name, self.element.profile.name,
+                                     self.binding.is_required))
             else:
                 self.element.valueset = valueset
                 self.element.enum = valueset.enum

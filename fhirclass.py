@@ -220,7 +220,7 @@ class FHIRClassProperty(object):
         self.name = spec.safe_property_name(name)
         self.parent_name = element.parent_name
         self.class_name = spec.class_name_for_type_if_property(type_name)
-        self.enum = element.enum if 'code' == type_name else None
+        self.enum = element.enum if type_name in ['code', 'CodeableConcept'] else None
         self.module_name = None             # should only be set if it's an external module (think Python)
         self.expansions = None              # will be populated in the class' `nonexpanded` property lists
         self.json_class = spec.json_class_for_class_name(self.class_name)
@@ -233,6 +233,7 @@ class FHIRClassProperty(object):
         self.short = element.definition.short
         self.formal = element.definition.formal
         self.representation = element.definition.representation
+        self.binding = element.definition.binding
     
     @property
     def documentation(self):
